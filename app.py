@@ -2,7 +2,13 @@
 Archivo principal de la aplicación Flask
 Punto de entrada del backend de Gestión Eclesial
 """
+
 import os
+from dotenv import load_dotenv
+
+# Forzar carga del archivo .env desde el mismo directorio
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
+
 from flask import Flask, jsonify
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
@@ -10,6 +16,7 @@ from config import config
 from database import init_db
 from routes import register_blueprints
 from utils.logger import setup_logger
+
 
 def create_app(config_name=None):
     """
@@ -24,20 +31,40 @@ def create_app(config_name=None):
     
     # Crear instancia de Flask
     app = Flask(__name__)
-    
+
     # Determinar configuración
     if config_name is None:
         config_name = os.environ.get('FLASK_ENV', 'default')
     
-    # Cargar configuración
+    # Cargar configuración desde config.py (que lee .env)
     app.config.from_object(config[config_name])
-    
+
     # Configurar CORS
-    CORS(app, origins=app.config['CORS_ORIGINS'])
-    
+    #CORS(app, origins=app.config['CORS_ORIGINS'])
+    CORS(app, 
+     origins="*",
+     methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+     allow_headers=["Content-Type", "Authorization"],
+     supports_credentials=True)
+
     # Configurar JWT
     jwt = JWTManager(app)
+
+    # === Manejo de errores de JWT ===
+    @jwt.expired_token_loader
+    def expired_token_callback(jwt_header, jwt_payload):
+        return {'message': 'Token ha expirado', 'error': 'token_expired'}, 401
     
+    @jwt.invalid_token_loader
+    def invalid_token_callback(error):
+        # 👀 Esto mostrará en consola la causa real del "token inválido"
+        # print(">>> Token inválido recibido:", error)
+        return {'message': 'Token inválido', 'error': 'invalid_token'}, 401
+    
+    @jwt.unauthorized_loader
+    def missing_token_callback(error):
+        return {'message': 'Token de autorización requerido', 'error': 'authorization_required'}, 401
+
     # Configurar logging
     setup_logger(app)
     
@@ -50,19 +77,6 @@ def create_app(config_name=None):
     # Crear directorio de uploads si no existe
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
     
-    # Manejador de errores JWT
-    @jwt.expired_token_loader
-    def expired_token_callback(jwt_header, jwt_payload):
-        return {'message': 'Token ha expirado', 'error': 'token_expired'}, 401
-    
-    @jwt.invalid_token_loader
-    def invalid_token_callback(error):
-        return {'message': 'Token inválido', 'error': 'invalid_token'}, 401
-    
-    @jwt.unauthorized_loader
-    def missing_token_callback(error):
-        return {'message': 'Token de autorización requerido', 'error': 'authorization_required'}, 401
-
     # Ruta raíz básica
     @app.route('/')
     def home():
@@ -87,6 +101,7 @@ def create_app(config_name=None):
         })
     
     return app
+
 
 # Crear aplicación
 app = create_app()

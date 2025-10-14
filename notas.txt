@@ -1,0 +1,19 @@
+@jwt_required()
+@require_rol('admin', 'secretario', 'líder')
+def eliminar_habitante(id):
+    if not tiene_permiso('eliminar_habitante'):
+        return jsonify({'success': False, 'message': 'No tiene permiso para eliminar habitantes'}), 403
+
+
+para manejar permisos a futuro
+
+
+SELECT COUNT(DISTINCT id_paso) AS pasos_completados 
+FROM progreso_curso 
+WHERE id_grupo_ayudantes_curso = ?;
+
+
+SELECT id_habitante, COUNT(DISTINCT id_paso) AS pasos_realizados
+FROM progreso_individual_curso
+WHERE id_grupo_ayudantes_curso = ?
+GROUP BY id_habitante;

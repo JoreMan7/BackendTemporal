@@ -77,9 +77,14 @@ def execute_query(query, params=None, fetch_one=False, fetch_all=True):
     try:
         cursor.execute(query, params or ())
         
-        if query.strip().upper().startswith(('INSERT', 'UPDATE', 'DELETE')):
+        if query.strip().upper().startswith('INSERT'):
+            connection.commit()
+            return cursor.lastrowid  # devuelve el ID autoincremental generado
+
+        elif query.strip().upper().startswith(('UPDATE', 'DELETE')):
             connection.commit()
             return cursor.rowcount
+
         
         if fetch_one:
             return cursor.fetchone()

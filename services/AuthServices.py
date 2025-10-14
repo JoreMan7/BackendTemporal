@@ -11,36 +11,82 @@ class AuthService:
     """Servicio para manejo de autenticación"""
     
     @staticmethod
-    def login(email, password):
+    def login_by_document(document_type, document_number, password):
         """
-        Autentica un usuario y genera tokens JWT
-        
-        Args:
-            email (str): Email del usuario
-            password (str): Contraseña del usuario
-            
-        Returns:
-            dict: Resultado de la autenticación con tokens
+        Autentica un usuario por tipo y número de documento.
+        Retorna tokens JWT si las credenciales son válidas.
         """
         try:
-            # Autenticar usuario
-            user = UserModel.authenticate_user(email, password)
-            
-            if not user:
+            # 🧩 Validar campos obligatorios
+            if not document_type or not document_number or not password:
                 return {
                     'success': False,
-                    'message': 'Credenciales inválidas'
+                    'message': 'Todos los campos son requeridos'
                 }
+    
+            # Limpiar número de documento (por si hay espacios)
+            document_number = str(document_number).strip()
+    
+            # 🧠 Intentar autenticar usuario
+            user = UserModel.authenticate_user_by_document(document_type, document_number, password)
+    
+            # ✅ Caso: usuario no encontrado o contraseña incorrecta
+            if not user:
+                logging.warning(f"Intento de login fallido → {document_type}-{document_number}")
+                return {
+                    'success': False,
+                    'message': 'Tipo de documento, número de documento o contraseña incorrectos'
+                }
+    
+            # 🧱 Validar estado activo del usuario y habitante
+            activo_usuario = user.get('ActivoUsuario', 1)
+            activo_habitante = user.get('ActivoHabitante', 1)
+    
+            if activo_usuario == 0 or activo_habitante == 0:
+                logging.warning(f"Intento de login con usuario inactivo → {document_type}-{document_number}")
+                return {
+                    'success': False,
+                    'message': 'Usuario inactivo. Contacte al administrador del sistema.'
+                }
+    
+            # ✅ Si todo está bien → crear tokens JWT
+            logging.info(
+                f"Login exitoso → {user['Nombre']} {user['Apellido']} "
+                f"(Doc: {document_type}-{document_number}, Rol: {user.get('rol', 'Usuario')})"
+            )
+    
+            return AuthService._create_login_response(user)
+    
+        except Exception as e:
+            logging.error(f"Error en login por documento: {str(e)}", exc_info=True)
+            return {
+                'success': False,
+                'message': 'Error interno al procesar el inicio de sesión'
+            }
+    @staticmethod
+    def _create_login_response(user):
+        """
+        Crea la respuesta de login con tokens
+        
+        Args:
+            user (dict): Datos del usuario autenticado
             
+        Returns:
+            dict: Respuesta con tokens y datos del usuario
+        """
+        try:
             # Crear tokens JWT
             access_token = create_access_token(
-                identity=user['IdUsuario'],
-                additional_claims={
-                    'rol': user['rol'],
-                    'nombre': user['Nombre'],
-                    'apellido': user['Apellido']
-                }
+            identity=str(user['IdUsuario']),
+            additional_claims={
+                'rol': user.get('rol', 'Usuario'),
+                'nombre': user['Nombre'],
+                'apellido': user['Apellido'],
+                'documento': user['NumeroDocumento'],
+                'tipo_documento': user.get('IdTipoDocumento')
+              }
             )
+
             
             refresh_token = create_refresh_token(identity=user['IdUsuario'])
             
@@ -53,56 +99,20 @@ class AuthService:
                     'id': user['IdUsuario'],
                     'nombre': user['Nombre'],
                     'apellido': user['Apellido'],
-                    'email': user['CorreoElectronico'],
-                    'rol': user['rol'],
-                    'telefono': user['Telefono']
+                    'email': user.get('CorreoElectronico'),
+                    'rol': user.get('rol', 'Usuario'),
+                    'telefono': user.get('Telefono'),
+                    'documento': user['NumeroDocumento'],
+                    'tipo_documento': user.get('IdTipoDocumento'),
+                    'tipo_documento_nombre': user.get('tipo_documento_nombre')
                 }
             }
             
         except Exception as e:
-            logging.error(f"Error en login: {str(e)}")
+            logging.error(f"Error creando respuesta de login: {str(e)}")
             return {
                 'success': False,
-                'message': 'Error interno del servidor'
-            }
-    
-    @staticmethod
-    def refresh_token():
-        """
-        Genera un nuevo access token usando el refresh token
-        
-        Returns:
-            dict: Nuevo access token
-        """
-        try:
-            current_user_id = get_jwt_identity()
-            user = UserModel.get_user_by_id(current_user_id)
-            
-            if not user:
-                return {
-                    'success': False,
-                    'message': 'Usuario no encontrado'
-                }
-            
-            new_token = create_access_token(
-                identity=current_user_id,
-                additional_claims={
-                    'rol': user['rol'],
-                    'nombre': user['Nombre'],
-                    'apellido': user['Apellido']
-                }
-            )
-            
-            return {
-                'success': True,
-                'access_token': new_token
-            }
-            
-        except Exception as e:
-            logging.error(f"Error refrescando token: {str(e)}")
-            return {
-                'success': False,
-                'message': 'Error interno del servidor'
+                'message': 'Error generando tokens de acceso'
             }
     
     @staticmethod
@@ -118,7 +128,10 @@ class AuthService:
         """
         try:
             # Validar datos requeridos
-            required_fields = ['nombre', 'apellido', 'correo_electronico', 'password', 'numero_documento']
+            required_fields = [
+                'nombre', 'apellido', 'id_tipo_documento', 
+                'numero_documento', 'password'
+            ]
             
             for field in required_fields:
                 if not user_data.get(field):
@@ -127,8 +140,39 @@ class AuthService:
                         'message': f'El campo {field} es requerido'
                     }
             
+            # Verificar si el documento ya existe
+            if UserModel.check_document_exists(
+                user_data.get('id_tipo_documento'), 
+                user_data.get('numero_documento')
+            ):
+                return {
+                    'success': False,
+                    'message': 'Ya existe un usuario con este documento'
+                }
+            
+            # Validar email si se proporciona
+            email = user_data.get('correo_electronico')
+            if email and not Security.validate_email(email):
+                return {
+                    'success': False,
+                    'message': 'Formato de email inválido'
+                }
+            
+            # Validar contraseña
+            password = user_data.get('password')
+            password_validation = Security.validate_password(password)
+            if not password_validation['valid']:
+                return {
+                    'success': False,
+                    'message': 'Contraseña no cumple con los requisitos',
+                    'errors': password_validation['errors']
+                }
+            
             # Crear usuario
             result = UserModel.create_user(user_data)
+            
+            if result['success']:
+                logging.info(f"Usuario registrado exitosamente: {user_data.get('nombre')} {user_data.get('apellido')}")
             
             return result
             
@@ -140,37 +184,33 @@ class AuthService:
             }
     
     @staticmethod
-    def validate_role(required_roles):
+    def get_document_types():
         """
-        Decorador para validar roles de usuario
+        Obtiene los tipos de documento disponibles
         
-        Args:
-            required_roles (list): Lista de roles permitidos
-            
         Returns:
-            function: Decorador
+            dict: Lista de tipos de documento
         """
-        def decorator(f):
-            def decorated_function(*args, **kwargs):
-                try:
-                    current_user_id = get_jwt_identity()
-                    user = UserModel.get_user_by_id(current_user_id)
-                    
-                    if not user or user['rol'] not in required_roles:
-                        return {
-                            'success': False,
-                            'message': 'No tienes permisos para realizar esta acción'
-                        }, 403
-                    
-                    return f(*args, **kwargs)
-                    
-                except Exception as e:
-                    logging.error(f"Error validando rol: {str(e)}")
-                    return {
-                        'success': False,
-                        'message': 'Error de autorización'
-                    }, 500
+        try:
+            from database.db_mysql import execute_query
             
-            decorated_function.__name__ = f.__name__
-            return decorated_function
-        return decorator
+            query = """
+                SELECT IdTipoDocumento, TipoDocumento
+                FROM tipodocumento
+                ORDER BY IdTipoDocumento
+            """
+            
+            document_types = execute_query(query, fetch_all=True)
+            
+            return {
+                'success': True,
+                'document_types': document_types or []
+            }
+            
+        except Exception as e:
+            logging.error(f"Error obteniendo tipos de documento: {str(e)}")
+            return {
+                'success': False,
+                'message': 'Error obteniendo tipos de documento',
+                'document_types': []
+            }
