@@ -46,6 +46,7 @@ def create_app(config_name=None):
      methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
      allow_headers=["Content-Type", "Authorization"],
      supports_credentials=True)
+    
 
     # Configurar JWT
     jwt = JWTManager(app)

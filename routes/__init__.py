@@ -10,6 +10,7 @@ from .sacramentos import sacramentos_bp
 from .opciones import opciones_bp
 from .gruposAyudantes import grupos_bp
 from .usuarios import usuarios_bp
+from .tareas import tareas_bp
 
 
 def register_blueprints(app):
@@ -39,3 +40,6 @@ def register_blueprints(app):
 
     # Usuarios
     app.register_blueprint(usuarios_bp, url_prefix='/api/usuarios')
+
+    # Tareas
+    app.register_blueprint(tareas_bp, url_prefix='/api/tareas')

@@ -1,15 +1,12 @@
-"""
-Rutas para gestión de habitantes
-"""
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required
-from database import execute_query
 from datetime import datetime
 from utils import require_rol
+from database import execute_query
 
 habitantes_bp = Blueprint('habitantes', __name__)
 
-#  LISTAR TODOS LOS HABITANTES
+# LISTAR TODOS LOS HABITANTES (MANTIENE COMPATIBILIDAD)
 @habitantes_bp.route('/', methods=['GET'])
 @jwt_required()
 def listar_habitantes():
@@ -33,9 +30,6 @@ def listar_habitantes():
                 h.IdTipoPoblacion,
                 tp.Nombre AS TipoPoblacion,
                 tp.Descripcion AS DescripcionPoblacion,
-                h.IdTipoSacramento,
-                ts.Descripcion AS TipoSacramento,
-                ts.Costo AS CostoSacramento,
                 h.DiscapacidadParaAsistir,
                 h.TieneImpedimentoSalud,
                 h.MotivoImpedimentoSalud,
@@ -46,21 +40,25 @@ def listar_habitantes():
                 h.Telefono,
                 h.CorreoElectronico,
                 h.Activo,
-                h.FechaRegistro
+                h.FechaRegistro,
+                -- CAMPOS TEMPORALES PARA COMPATIBILIDAD CON FRONTEND
+                NULL AS IdTipoSacramento,
+                COALESCE(GROUP_CONCAT(DISTINCT ts.Descripcion SEPARATOR ', '), 'Ninguno') AS TipoSacramento
             FROM habitantes h
             LEFT JOIN tipodocumento td     ON h.IdTipoDocumento = td.IdTipoDocumento
             LEFT JOIN estados_civiles ec   ON h.IdEstadoCivil = ec.IdEstadoCivil
             LEFT JOIN sexos s              ON h.IdSexo = s.IdSexo
             LEFT JOIN religiones r         ON h.IdReligion = r.IdReligion
             LEFT JOIN tipopoblacion tp     ON h.IdTipoPoblacion = tp.IdTipoPoblacion
-            LEFT JOIN tiposacramentos ts   ON h.IdTipoSacramento = ts.IdSacramento
             LEFT JOIN sector sec           ON h.IdSector = sec.IdSector
+            LEFT JOIN habitante_sacramento hs ON h.IdHabitante = hs.IdHabitante
+            LEFT JOIN tiposacramentos ts   ON hs.IdSacramento = ts.IdSacramento
             WHERE h.Activo = 1
+            GROUP BY h.IdHabitante
             ORDER BY h.IdHabitante DESC
             LIMIT 1000
         """
         habitantes = execute_query(query)
-        #print(habitantes)
         return jsonify({
             "success": True,
             "habitantes": habitantes
@@ -69,7 +67,7 @@ def listar_habitantes():
         return jsonify({"success": False, "message": str(e)}), 500
 
 
-#  OBTENER HABITANTE POR ID
+# OBTENER HABITANTE POR ID (MANTIENE COMPATIBILIDAD)
 @habitantes_bp.route('/<int:id>', methods=['GET'])
 @jwt_required()
 def obtener_habitante(id):
@@ -93,9 +91,6 @@ def obtener_habitante(id):
                 h.IdTipoPoblacion,
                 tp.Nombre AS TipoPoblacion,
                 tp.Descripcion AS DescripcionPoblacion,
-                h.IdTipoSacramento,
-                ts.Descripcion AS TipoSacramento,
-                ts.Costo AS CostoSacramento,
                 h.DiscapacidadParaAsistir,
                 h.TieneImpedimentoSalud,
                 h.MotivoImpedimentoSalud,
@@ -105,16 +100,21 @@ def obtener_habitante(id):
                 h.Direccion,
                 h.Telefono,
                 h.CorreoElectronico,
-                h.FechaRegistro
+                h.FechaRegistro,
+                -- CAMPOS TEMPORALES PARA COMPATIBILIDAD CON FRONTEND
+                NULL AS IdTipoSacramento,
+                COALESCE(GROUP_CONCAT(DISTINCT ts.Descripcion SEPARATOR ', '), 'Ninguno') AS TipoSacramento
             FROM habitantes h
             LEFT JOIN tipodocumento td     ON h.IdTipoDocumento = td.IdTipoDocumento
             LEFT JOIN estados_civiles ec   ON h.IdEstadoCivil = ec.IdEstadoCivil
             LEFT JOIN sexos s              ON h.IdSexo = s.IdSexo
             LEFT JOIN religiones r         ON h.IdReligion = r.IdReligion
             LEFT JOIN tipopoblacion tp     ON h.IdTipoPoblacion = tp.IdTipoPoblacion
-            LEFT JOIN tiposacramentos ts   ON h.IdTipoSacramento = ts.IdSacramento
             LEFT JOIN sector sec           ON h.IdSector = sec.IdSector
+            LEFT JOIN habitante_sacramento hs ON h.IdHabitante = hs.IdHabitante
+            LEFT JOIN tiposacramentos ts   ON hs.IdSacramento = ts.IdSacramento
             WHERE h.IdHabitante = %s AND h.Activo = 1
+            GROUP BY h.IdHabitante
         """
         habitante = execute_query(query, (id,), fetch_one=True)
 
@@ -126,7 +126,7 @@ def obtener_habitante(id):
         return jsonify({'success': False, 'message': f"Error al obtener habitante: {str(e)}"}), 500
 
 
-#  CREAR HABITANTE
+# CREAR HABITANTE (ELIMINA SACRAMENTOS PERO MANTIENE COMPATIBILIDAD)
 @habitantes_bp.route('/', methods=['POST'])
 @jwt_required()
 def crear_habitante():
@@ -138,12 +138,12 @@ def crear_habitante():
             INSERT INTO habitantes (
                 Nombre, Apellido, IdTipoDocumento, NumeroDocumento,
                 FechaNacimiento, Hijos, IdSexo, IdReligion, IdEstadoCivil,
-                IdTipoPoblacion, IdTipoSacramento, IdSector,
+                IdTipoPoblacion, IdSector,
                 Direccion, Telefono, CorreoElectronico,
                 DiscapacidadParaAsistir, TieneImpedimentoSalud, MotivoImpedimentoSalud,
                 IdGrupoFamiliar, FechaRegistro, Activo
             )
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1)
         """
         params = (
             data.get('nombre'),
@@ -156,7 +156,6 @@ def crear_habitante():
             data.get('id_religion'),
             data.get('id_estado_civil'),
             data.get('id_tipo_poblacion'),
-            data.get('id_tipo_sacramento'),
             data.get('id_sector'),
             data.get('direccion'),
             data.get('telefono'),
@@ -174,7 +173,7 @@ def crear_habitante():
         return jsonify({'success': False, 'message': f"Error al crear habitante: {str(e)}"}), 500
 
 
-#  ACTUALIZAR HABITANTE
+# ACTUALIZAR HABITANTE (ELIMINA SACRAMENTOS PERO MANTIENE COMPATIBILIDAD)
 @habitantes_bp.route('/<int:id>', methods=['PUT'])
 @jwt_required()
 @require_rol('Administrador')
@@ -186,7 +185,7 @@ def actualizar_habitante(id):
             SET Nombre=%s, Apellido=%s, NumeroDocumento=%s, CorreoElectronico=%s,
                 Telefono=%s, Direccion=%s, Hijos=%s,
                 IdSexo=%s, IdReligion=%s, IdEstadoCivil=%s,
-                IdTipoPoblacion=%s, IdTipoSacramento=%s, IdSector=%s,
+                IdTipoPoblacion=%s, IdSector=%s,
                 DiscapacidadParaAsistir=%s, TieneImpedimentoSalud=%s, MotivoImpedimentoSalud=%s,
                 FechaNacimiento=%s
             WHERE IdHabitante=%s AND Activo=1
@@ -203,7 +202,6 @@ def actualizar_habitante(id):
             data.get('id_religion'),
             data.get('id_estado_civil'),
             data.get('id_tipo_poblacion'),
-            data.get('id_tipo_sacramento'),
             data.get('id_sector'),
             data.get('discapacidad_para_asistir'),
             data.get('tiene_impedimento_salud'),
@@ -219,7 +217,7 @@ def actualizar_habitante(id):
         return jsonify({'success': False, 'message': f"Error al actualizar habitante: {str(e)}"}), 500
 
 
-#  DESACTIVAR HABITANTE (soft delete)
+# DESACTIVAR HABITANTE (soft delete)
 @habitantes_bp.route('/<int:id>/desactivar', methods=['PATCH'])
 @jwt_required()
 @require_rol('Administrador')
@@ -233,6 +231,8 @@ def desactivar_habitante(id):
     except Exception as e:
         return jsonify({'success': False, 'message': f"Error al desactivar habitante: {str(e)}"}), 500
 
+
+# BUSCAR GRUPO POR MIEMBRO
 @habitantes_bp.route('/buscar_grupo', methods=['GET'])
 @jwt_required()
 def buscar_grupo_por_miembro():
@@ -248,3 +248,5 @@ def buscar_grupo_por_miembro():
     like = f"%{q.lower()}%"
     result = execute_query(query, (like, like, like))
     return jsonify({'success': True, 'resultados': result}), 200
+
+

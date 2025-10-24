@@ -9,69 +9,116 @@ from utils import require_rol
 
 sacramentos_bp = Blueprint('sacramentos', __name__)
 
-# ✅ LISTAR TODOS LOS TIPOS DE SACRAMENTO
-@sacramentos_bp.route('/api/sacramentos/tipos', methods=['GET'])
+# OBTENER SACRAMENTOS DE UN HABITANTE
+sacramentos_bp.route('/habitante/<int:id>', methods=['GET'])
 @jwt_required()
-def listar_tipos_sacramento():
-    try:
-        query = "SELECT IdSacramento AS id, Descripcion AS descripcion, Costo FROM tiposacramentos"
-        tipos = execute_query(query)
-        return jsonify({'success': True, 'tipos': tipos}), 200
-    except Exception as e:
-        return jsonify({'success': False, 'message': f"Error al obtener tipos de sacramentos: {str(e)}"}), 500
-
-
-# ✅ OBTENER SACRAMENTOS DE UN HABITANTE
-@sacramentos_bp.route('/api/habitantes/<int:id>/sacramentos', methods=['GET'])
-@jwt_required()
-def obtener_sacramentos(id):
+def obtener_sacramentos_habitante(id):
     try:
         query = """
             SELECT 
-                s.IdSacramento AS id_sacramento,
-                s.Descripcion AS sacramento,
-                hs.FechaSacramento AS fecha
+                hs.IdHabitante,
+                hs.IdSacramento,
+                ts.Descripcion AS Sacramento,
+                ts.Costo,
+                hs.FechaSacramento
             FROM habitante_sacramento hs
-            INNER JOIN tiposacramentos s ON hs.IdSacramento = s.IdSacramento
+            JOIN tiposacramentos ts ON hs.IdSacramento = ts.IdSacramento
             WHERE hs.IdHabitante = %s
+            ORDER BY hs.FechaSacramento
         """
         sacramentos = execute_query(query, (id,))
         return jsonify({'success': True, 'sacramentos': sacramentos}), 200
     except Exception as e:
-        return jsonify({'success': False, 'message': f"Error al obtener sacramentos: {str(e)}"}), 500
+        return jsonify({'success': False, 'message': str(e)}), 500
 
-
-# ✅ REGISTRAR SACRAMENTO A UN HABITANTE
-@sacramentos_bp.route('/api/habitantes/<int:id>/sacramentos', methods=['POST'])
+# AGREGAR SACRAMENTO A HABITANTE
+@sacramentos_bp.route('/habitante/<int:id>', methods=['POST'])
 @jwt_required()
-@require_rol('Administrador')
-def registrar_sacramento(id):
+def agregar_sacramento_habitante(id):
     try:
         data = request.get_json()
-        fecha = data.get('fecha_sacramento') or datetime.now().strftime('%Y-%m-%d')
-
-        query = """
+        
+        # Verificar que el habitante existe
+        habitante_query = "SELECT IdHabitante FROM habitantes WHERE IdHabitante = %s AND Activo = 1"
+        habitante = execute_query(habitante_query, (id,), fetch_one=True)
+        if not habitante:
+            return jsonify({'success': False, 'message': 'Habitante no encontrado'}), 404
+        
+        # Verificar que el sacramento existe
+        sacramento_query = "SELECT IdSacramento FROM tiposacramentos WHERE IdSacramento = %s"
+        sacramento = execute_query(sacramento_query, (data.get('id_sacramento'),), fetch_one=True)
+        if not sacramento:
+            return jsonify({'success': False, 'message': 'Sacramento no válido'}), 400
+        
+        # Verificar que no existe ya esta combinación
+        existe_query = "SELECT 1 FROM habitante_sacramento WHERE IdHabitante = %s AND IdSacramento = %s"
+        existe = execute_query(existe_query, (id, data.get('id_sacramento')), fetch_one=True)
+        if existe:
+            return jsonify({'success': False, 'message': 'El habitante ya tiene este sacramento'}), 400
+        
+        # Insertar nuevo sacramento
+        insert_query = """
             INSERT INTO habitante_sacramento (IdHabitante, IdSacramento, FechaSacramento)
             VALUES (%s, %s, %s)
         """
-        params = (id, data.get('id_sacramento'), fecha)
-        execute_query(query, params)
-
-        return jsonify({'success': True, 'message': 'Sacramento registrado exitosamente'}), 201
+        execute_query(insert_query, (
+            id, 
+            data.get('id_sacramento'), 
+            data.get('fecha_sacramento')
+        ))
+        
+        return jsonify({'success': True, 'message': 'Sacramento agregado exitosamente'}), 201
+        
     except Exception as e:
-        return jsonify({'success': False, 'message': f"Error al registrar sacramento: {str(e)}"}), 500
+        return jsonify({'success': False, 'message': f"Error al agregar sacramento: {str(e)}"}), 500
 
-
-# ✅ ELIMINAR SACRAMENTO DE UN HABITANTE
-@sacramentos_bp.route('/api/habitantes/<int:id>/sacramentos/<int:id_sacramento>', methods=['DELETE'])
+# ACTUALIZAR FECHA DE SACRAMENTO
+@sacramentos_bp.route('/habitante/<int:id_habitante>/sacramento/<int:id_sacramento>', methods=['PUT'])
 @jwt_required()
-@require_rol('Administrador')
-def eliminar_sacramento(id, id_sacramento):
+def actualizar_sacramento_habitante(id_habitante, id_sacramento):
     try:
-        query = "DELETE FROM habitante_sacramento WHERE IdHabitante=%s AND IdSacramento=%s"
-        deleted = execute_query(query, (id, id_sacramento))
+        data = request.get_json()
+        
+        query = """
+            UPDATE habitante_sacramento 
+            SET FechaSacramento = %s 
+            WHERE IdHabitante = %s AND IdSacramento = %s
+        """
+        updated = execute_query(query, (
+            data.get('fecha_sacramento'),
+            id_habitante,
+            id_sacramento
+        ))
+        
+        if updated:
+            return jsonify({'success': True, 'message': 'Sacramento actualizado exitosamente'}), 200
+        return jsonify({'success': False, 'message': 'Sacramento no encontrado'}), 404
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': f"Error al actualizar sacramento: {str(e)}"}), 500
+
+# ELIMINAR SACRAMENTO DE HABITANTE
+@sacramentos_bp.route('/habitante/<int:id_habitante>/sacramento/<int:id_sacramento>', methods=['DELETE'])
+@jwt_required()
+def eliminar_sacramento_habitante(id_habitante, id_sacramento):
+    try:
+        query = "DELETE FROM habitante_sacramento WHERE IdHabitante = %s AND IdSacramento = %s"
+        deleted = execute_query(query, (id_habitante, id_sacramento))
+        
         if deleted:
             return jsonify({'success': True, 'message': 'Sacramento eliminado exitosamente'}), 200
         return jsonify({'success': False, 'message': 'Sacramento no encontrado'}), 404
+        
     except Exception as e:
         return jsonify({'success': False, 'message': f"Error al eliminar sacramento: {str(e)}"}), 500
+
+# OBTENER CATÁLOGO DE SACRAMENTOS DISPONIBLES
+@sacramentos_bp.route('/catalogo', methods=['GET'])
+@jwt_required()
+def obtener_catalogo_sacramentos():
+    try:
+        query = "SELECT IdSacramento, Descripcion, Costo FROM tiposacramentos ORDER BY IdSacramento"
+        sacramentos = execute_query(query)
+        return jsonify({'success': True, 'sacramentos': sacramentos}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
