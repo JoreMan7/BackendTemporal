@@ -11,7 +11,8 @@ from .opciones import opciones_bp
 from .gruposAyudantes import grupos_bp
 from .usuarios import usuarios_bp
 from .tareas import tareas_bp
-
+from .cursos import cursos_bp
+from .grupofamiliar import grupofamiliar_bp
 
 def register_blueprints(app):
     """
@@ -39,7 +40,13 @@ def register_blueprints(app):
     app.register_blueprint(grupos_bp, url_prefix='/api/grupos')
 
     # Usuarios
-    app.register_blueprint(usuarios_bp, url_prefix='/api/usuarios')
+    app.register_blueprint(usuarios_bp, url_prefix="/api/usuarios")
 
     # Tareas
     app.register_blueprint(tareas_bp, url_prefix='/api/tareas')
+
+    # Cursos
+    app.register_blueprint(cursos_bp, url_prefix='/api/cursos')
+
+    # Grupos Familiares
+    app.register_blueprint(grupofamiliar_bp, url_prefix='/api/grupofamiliar')   

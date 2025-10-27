@@ -177,7 +177,7 @@ def crear_usuario():
         numero_documento = data.get("numero_documento")
         id_tipo_usuario = data.get("id_tipo_usuario")
         password = data.get("password")
-
+        
         if not tipo_documento or not numero_documento or not id_tipo_usuario or not password:
             return jsonify({
                 "success": False, 
@@ -259,7 +259,7 @@ def actualizar_rol_usuario(id):
             (id_tipo_usuario, id)
         )
         
-        if result and getattr(result, 'rowcount', 0) == 0:
+        if result == 0:
             return jsonify({"success": False, "message": "Usuario no encontrado o inactivo"}), 404
 
         return jsonify({"success": True, "message": "Rol actualizado exitosamente"}), 200
@@ -289,7 +289,7 @@ def cambiar_contraseña(id):
             (hashed, id)
         )
         
-        if result and getattr(result, 'rowcount', 0) == 0:
+        if result  == 0:
             return jsonify({"success": False, "message": "Usuario no encontrado o inactivo"}), 404
 
         return jsonify({"success": True, "message": "Contraseña actualizada correctamente"}), 200
@@ -308,12 +308,14 @@ def desactivar_usuario(id):
             (id,)
         )
         
-        if result and getattr(result, 'rowcount', 0) == 0:
-            return jsonify({"success": False, "message": "Usuario no encontrado o ya inactivo"}), 404
+        if result == 0:
+         return jsonify({"success": False, "message": "Usuario no encontrado o ya inactivo"}), 404
 
+        
         return jsonify({"success": True, "message": "Usuario desactivado exitosamente"}), 200
 
     except Exception as e:
+        
         return jsonify({"success": False, "message": str(e)}), 500
 
 @usuarios_bp.route('/<int:id>/activar', methods=['PATCH'])
@@ -326,21 +328,33 @@ def activar_usuario(id):
             (id,)
         )
         
-        if result and getattr(result, 'rowcount', 0) == 0:
-            return jsonify({"success": False, "message": "Usuario no encontrado o ya activo"}), 404
+        if result == 0:
+         return jsonify({"success": False, "message": "Usuario no encontrado o ya inactivo"}), 404
 
+        
         return jsonify({"success": True, "message": "Usuario activado exitosamente"}), 200
 
     except Exception as e:
+        
         return jsonify({"success": False, "message": str(e)}), 500
 
 # ---------- 8. LISTAR ROLES DISPONIBLES ----------
 @usuarios_bp.route('/roles', methods=['GET'])
 @jwt_required()
 def listar_roles():
+
     try:
         query = "SELECT IdTipoUsuario, Perfil FROM tipousuario;"
         roles = execute_query(query, fetch_all=True)
         return jsonify({"success": True, "data": {"roles": roles}}), 200
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
+
+
+@usuarios_bp.route('/<int:id>/activar', methods=['OPTIONS'])
+def activar_usuario_options(id):
+    return '', 204
+
+@usuarios_bp.route('/<int:id>/desactivar/', methods=['OPTIONS'])
+def desactivar_usuario_options(id):
+    return '', 204

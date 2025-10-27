@@ -44,6 +44,46 @@ def listar_grupos():
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
 
+@grupos_bp.route('/<int:id>/miembros/<int:id_habitante>', methods=['GET'])
+@jwt_required()
+def obtener_miembro(id, id_habitante):
+    """
+    Devuelve la información detallada de un miembro específico de un grupo.
+    """
+    try:
+        query = """
+            SELECT 
+                m.id_miembro,
+                m.id_habitante,
+                h.Nombre,
+                h.Apellido,
+                h.NumeroDocumento,
+                h.Telefono,
+                h.CorreoElectronico,
+                h.Direccion,
+                m.Activo
+            FROM miembro_grupo_ayudantes m
+            JOIN habitantes h ON m.id_habitante = h.IdHabitante
+            WHERE m.id_grupo_ayudantes = %s AND m.id_habitante = %s
+        """
+        miembro = execute_query(query, (id, id_habitante), fetch_one=True)
+
+        if not miembro:
+            return jsonify({
+                'success': False,
+                'message': 'Miembro no encontrado o no pertenece a este grupo.'
+            }), 404
+
+        return jsonify({
+            'success': True,
+            'miembro': miembro
+        }), 200
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f"Error al obtener miembro: {str(e)}"
+        }), 500
 
 # OBTENER GRUPO POR ID
 @grupos_bp.route('/<int:id>', methods=['GET'])
@@ -287,7 +327,7 @@ def agregar_miembro(id):
 @require_rol('Administrador')
 def desactivar_miembro(id, id_miembro):
     try:
-        query = "UPDATE miembro_grupo_ayudantes SET Activo = 0 WHERE id_miembro = %s AND id_grupo_ayudantes = %s"
+        query = "UPDATE miembro_grupo_ayudantes SET Activo = 0 WHERE id_habitante = %s AND id_grupo_ayudantes = %s"
         updated = execute_query(query, (id_miembro, id))
         if updated:
             return jsonify({'success': True, 'message': 'Miembro desactivado exitosamente'}), 200
@@ -472,6 +512,7 @@ def avanzar_curso(id, id_curso):
 
     except Exception as e:
         return jsonify({'success': False, 'message': f"Error al avanzar curso: {str(e)}"}), 500
+    
 
 # AVANZAR PASO INDIVIDUAL EN CURSO
 @grupos_bp.route('/<int:id>/cursos/<int:id_curso>/avanzar/miembro/<int:id_habitante>', methods=['POST'])
