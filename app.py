@@ -42,11 +42,12 @@ def create_app(config_name=None):
     # Configurar CORS
     #CORS(app, origins=app.config['CORS_ORIGINS'])
     CORS(app, 
-     origins="*",
+     resources={r"/*": {"origins": "*"}},
      methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
      allow_headers=["Content-Type", "Authorization"],
-     supports_credentials=True)
-    
+     expose_headers=["Content-Type", "Authorization"],
+     supports_credentials=False)
+   
 
     # Configurar JWT
     jwt = JWTManager(app)

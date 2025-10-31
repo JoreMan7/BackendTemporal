@@ -4,7 +4,7 @@ Maneja login, registro, refresh de tokens y gestión de usuarios
 """
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from services.AuthServices import AuthService
+from services import AuthService
 from models.UserModel import UserModel
 from utils.Security import Security
 import logging

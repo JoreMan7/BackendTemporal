@@ -634,3 +634,4 @@ def buscar_lider():
     like = f"%{q.lower()}%"
     results = execute_query(query, (like, like, like))
     return jsonify({'success': True, 'habitantes': results}), 200
+
