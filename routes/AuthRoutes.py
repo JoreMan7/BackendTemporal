@@ -3,90 +3,94 @@ Rutas de autenticación y autorización
 Maneja login, registro, refresh de tokens y gestión de usuarios
 """
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import (
+    jwt_required, get_jwt_identity, get_jwt,
+    create_access_token, create_refresh_token
+)
+from datetime import datetime, timezone, timedelta
 from services import AuthService
-from models.UserModel import UserModel
-from utils.Security import Security
+from models import UserModel
+from utils import Security
 import logging
+from config import Config
+
+from flask import request
+
+
 
 # Crear blueprint para autenticación
 auth_bp = Blueprint('auth', __name__)
 
-@auth_bp.route('/login', methods=['POST'])
+# --- LOGIN ---
+@auth_bp.post('/login')
 def login():
-    """
-    Endpoint para autenticación de usuarios por documento
-    
-    Body JSON:
-    {
-        "document_type": "1",
-        "document_number": "12345678",
-        "password": "contraseña"
-    }
-    
-    Returns:
-        JSON: Resultado de la autenticación con tokens
-    """
     try:
-        data = request.get_json()
-        
-        if not data:
-            return jsonify({
-                'success': False,
-                'message': 'Datos requeridos'
-            }), 400
-        
-        # Obtener datos del formulario
-        document_type = data.get('document_type')
-        document_number = data.get('document_number')
+        data = request.get_json(silent=True) or {}
+        doc_type = data.get('document_type')
+        doc_num = data.get('document_number')
         password = data.get('password')
-        
-        #print(document_number, document_type, password)
 
-        # Validaciones básicas
-        if not document_type:
-            return jsonify({
-                'success': False,
-                'message': 'Tipo de documento es requerido'
-            }), 400
-            
-        if not document_number:
-            return jsonify({
-                'success': False,
-                'message': 'Número de documento es requerido'
-            }), 400
-            
-        if not password:
-            return jsonify({
-                'success': False,
-                'message': 'Contraseña es requerida'
-            }), 400
+        if not doc_type or not doc_num or not password:
+            return jsonify({'success': False, 'message': 'Datos incompletos'}), 400
+
+        # ⬇️ DELEGAR TODA LA LÓGICA AL SERVICIO
+        result = AuthService.login_by_document(doc_type, doc_num, password)
         
-        # Validar formato del número de documento
-        document_number = str(document_number).strip()
-        if not document_number.isdigit():
-            return jsonify({
-                'success': False,
-                'message': 'El número de documento debe contener solo números'
-            }), 400
-        
-        # Log del intento de login (sin mostrar contraseña)
-        logging.info(f"Intento de login - Tipo: {document_type}, Documento: {document_number}")
-        
-        # Autenticar usuario por documento
-        result = AuthService.login_by_document(document_type, document_number, password)
-        
-        if result['success']:
+        if result.get('success'):
             return jsonify(result), 200
         else:
-            return jsonify(result), 401
-            
+            # El servicio ya maneja los errores (bloqueos, credenciales, etc.)
+            status_code = 401
+            if result.get('locked'):
+                status_code = 423
+            return jsonify(result), status_code
+
     except Exception as e:
-        logging.error(f"Error en endpoint login: {str(e)}")
+        logging.error(f"Error crítico en login: {str(e)}", exc_info=True)
         return jsonify({
-            'success': False,
-            'message': 'Error interno del servidor'
+            "success": False, 
+            "message": "Error interno del servidor"
         }), 500
+
+def calculate_lock_duration(lock_count):
+    """
+    Calcula la duración del bloqueo usando multiplicador progresivo
+    lock_count = 0 (primer bloqueo), 1 (segundo bloqueo), etc.
+    """
+    base_minutes = Config.BASE_LOCK_DURATION_MINUTES
+    multiplier = Config.LOCK_MULTIPLIER
+    max_minutes = Config.MAX_LOCK_DURATION_MINUTES
+    
+    # Fórmula: base * (multiplicador ^ lock_count)
+    duration = base_minutes * (multiplier ** lock_count)
+    
+    # No exceder el máximo
+    return min(int(duration), max_minutes)
+
+@auth_bp.get('/verify')
+@jwt_required()
+def verify_token():
+    return jsonify({
+        "success": True,
+        "user_id": get_jwt_identity(),
+        "claims": get_jwt()
+    }), 200
+
+@auth_bp.get('/verify-echo')  # <- diagnóstico
+def verify_echo():
+    auth_header = request.headers.get("Authorization")
+    return jsonify({
+        "received_authorization": auth_header or None
+    }), 200
+
+
+@auth_bp.post('/refresh')
+@jwt_required(refresh=True)
+def refresh_token():
+    user_id = get_jwt_identity()
+    new_access = create_access_token(identity=user_id)
+    return jsonify({"success": True, "access_token": new_access}), 200
+
 
 @auth_bp.route('/register', methods=['POST'])
 def register():
@@ -161,7 +165,7 @@ def register():
             'message': 'Error interno del servidor'
         }), 500
 
-
+@auth_bp.route('/profile', methods=['GET'])
 @jwt_required()
 def get_profile():
     """
@@ -233,6 +237,22 @@ def get_document_types():
             'message': 'Error interno del servidor',
             'document_types': []
         }), 500
+
+@auth_bp.route('/security-settings', methods=['GET'])
+def get_security_settings():
+    """Endpoint para ver la configuración de seguridad (solo admin)"""
+    return jsonify({
+        "max_login_attempts": Config.MAX_LOGIN_ATTEMPTS,
+        "base_lock_duration_minutes": Config.BASE_LOCK_DURATION_MINUTES,
+        "lock_multiplier": Config.LOCK_MULTIPLIER,
+        "max_lock_duration_minutes": Config.MAX_LOCK_DURATION_MINUTES,
+        "lock_examples": {
+            "first_lock": calculate_lock_duration(0),
+            "second_lock": calculate_lock_duration(1),
+            "third_lock": calculate_lock_duration(2),
+            "max_lock": Config.MAX_LOCK_DURATION_MINUTES
+        }
+    })
 
 @auth_bp.route('/logout', methods=['POST'])
 @jwt_required()

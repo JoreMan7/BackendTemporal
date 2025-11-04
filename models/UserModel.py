@@ -2,6 +2,7 @@ from database.db_mysql import execute_query
 from utils import Security
 from datetime import datetime
 import logging
+from werkzeug.security import check_password_hash 
 
 class UserModel:
     @staticmethod
@@ -65,47 +66,43 @@ class UserModel:
 
     @staticmethod
     def authenticate_user_by_document(document_type, document_number, password):
+        """
+        Autentica usuario por documento y contraseña
+        """
         try:
             query = """
                 SELECT 
                     u.IdUsuario,
                     u.IdTipoUsuario,
-                    u.Activo AS ActivoUsuario,
+                    u.Contraseña,
+                    u.Activo as ActivoUsuario,
+                    u.login_attempts,
+                    u.locked_until,
                     h.IdHabitante,
-                    h.Activo AS ActivoHabitante,
                     h.Nombre,
                     h.Apellido,
-                    h.CorreoElectronico,
                     h.NumeroDocumento,
-                    h.Telefono,
                     h.IdTipoDocumento,
-                    td.Descripcion AS tipo_documento_nombre,
-                    tu.Perfil AS rol,
-                    u.Contraseña AS password_hash
+                    h.Activo as ActivoHabitante,
+                    tu.Perfil as rol,
+                    td.Descripcion as tipo_documento_nombre
                 FROM usuario u
-                INNER JOIN habitantes h ON u.IdHabitante = h.IdHabitante
-                LEFT JOIN tipousuario tu ON u.IdTipoUsuario = tu.IdTipoUsuario
-                LEFT JOIN tipodocumento td ON h.IdTipoDocumento = td.IdTipoDocumento
-                WHERE h.IdTipoDocumento = %s
-                  AND h.NumeroDocumento = %s
-                  AND u.Activo = 1
-                  AND h.Activo = 1
+                JOIN habitantes h ON u.IdHabitante = h.IdHabitante
+                JOIN tipousuario tu ON u.IdTipoUsuario = tu.IdTipoUsuario
+                JOIN tipodocumento td ON h.IdTipoDocumento = td.IdTipoDocumento
+                WHERE h.NumeroDocumento = %s AND h.IdTipoDocumento = %s
                 LIMIT 1
             """
-            user = execute_query(query, (document_type, document_number), fetch_one=True)
-            if not user:
-                return None
 
-            if not Security.check_password_hash(user['password_hash'], password):
-                return None
+            user = execute_query(query, (document_number, document_type), fetch_one=True)
 
-            user.pop('password_hash', None)
-            return user
-
-        except Exception as e:
-            logging.error(f"Error autenticando usuario por documento: {str(e)}")
+            if user and check_password_hash(user['Contraseña'], password):
+                return user
             return None
 
+        except Exception as e:
+            logging.error(f"Error en authenticate_user_by_document: {str(e)}")
+            return None
     @staticmethod
     def get_user_by_id(user_id):
         try:

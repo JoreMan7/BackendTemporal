@@ -24,10 +24,25 @@ class Config:
     MYSQL_PORT = int(os.environ.get('MYSQL_PORT') or 3306)
     
     # Configuración de JWT
-    JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY')
-    JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=1)
-    JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=30)
-    
+    JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'fallback-secret-key')
+    JWT_ACCESS_TOKEN_EXPIRES = timedelta(
+        seconds=int(os.environ.get("JWT_ACCESS_TOKEN_SECONDS", 3600))
+    )
+    JWT_REFRESH_TOKEN_EXPIRES = timedelta(
+        seconds=int(os.environ.get("JWT_REFRESH_TOKEN_SECONDS", 604800))
+    )
+
+    # SISTEMA DE BLOQUEO PROGRESIVO CONFIGURABLE
+    MAX_LOGIN_ATTEMPTS = int(os.environ.get("MAX_LOGIN_ATTEMPTS", 3))
+    BASE_LOCK_DURATION_MINUTES = int(os.environ.get("BASE_LOCK_DURATION_MINUTES", 
+    int(os.environ.get("LOGIN_LOCK_DURATION_SECONDS", 3600)) // 60  # Convierte segundos a minutos
+))
+    LOCK_MULTIPLIER = float(os.environ.get("LOCK_MULTIPLIER", 1.5))  # 1.5 = 50% más cada vez
+    MAX_LOCK_DURATION_MINUTES = int(os.environ.get("MAX_LOCK_DURATION_MINUTES", 480))  # 8 horas máximo
+
+    # ⚠️ MANTENER para compatibilidad (opcional, puedes eliminarla si quieres)
+    LOGIN_LOCK_DURATION_SECONDS = BASE_LOCK_DURATION_MINUTES * 60
+
     # Configuración de CORS
     CORS_ORIGINS = [
     "http://localhost:3000",

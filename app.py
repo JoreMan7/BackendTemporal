@@ -16,70 +16,74 @@ from config import config
 from database import init_db
 from routes import register_blueprints
 from utils.logger import setup_logger
+from datetime import timedelta
 
 
 def create_app(config_name=None):
     """
     Factory function para crear la aplicación Flask
-    
-    Args:
-        config_name (str): Nombre de la configuración a usar
-        
-    Returns:
-        Flask: Instancia de la aplicación configurada
     """
-    
-    # Crear instancia de Flask
     app = Flask(__name__)
 
     # Determinar configuración
     if config_name is None:
         config_name = os.environ.get('FLASK_ENV', 'default')
-    
-    # Cargar configuración desde config.py (que lee .env)
+
+    # Cargar configuración desde config.py
     app.config.from_object(config[config_name])
 
-    # Configurar CORS
-    #CORS(app, origins=app.config['CORS_ORIGINS'])
-    CORS(app, 
-     resources={r"/*": {"origins": "*"}},
-     methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-     allow_headers=["Content-Type", "Authorization"],
-     expose_headers=["Content-Type", "Authorization"],
-     supports_credentials=False)
-   
-
-    # Configurar JWT
+    # ===============================
+    # 🌍 Configuración de CORS
+    # ===============================
+    CORS(
+    app,
+    resources={r"/api/*": {"origins": "*"}},  # limita a /api/*
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],  # permitir Authorization
+    expose_headers=[],  # no hace falta exponer Authorization para requests
+    supports_credentials=False  # NO usamos cookies → debe ser False
+)
+    # ===============================
+    # 🔐 Configuración de JWT
+    # ===============================
     jwt = JWTManager(app)
-
+    # Tiempos de expiración (ya están también en config.py; mantener aquí no rompe)
+    app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=1)
+    app.config["JWT_REFRESH_TOKEN_EXPIRES"] = timedelta(days=7)
+    app.config["JWT_ALGORITHM"] = "HS256"
+    # Indicar claramente dónde está el token
+    app.config["JWT_TOKEN_LOCATION"] = ["headers"]   # leer desde header
+    app.config["JWT_HEADER_NAME"] = "Authorization"
+    app.config["JWT_HEADER_TYPE"] = "Bearer"
+    # Margen por diferencias de reloj
+    app.config["JWT_DECODE_LEEWAY"] = 60
     # === Manejo de errores de JWT ===
     @jwt.expired_token_loader
-    def expired_token_callback(jwt_header, jwt_payload):
-        return {'message': 'Token ha expirado', 'error': 'token_expired'}, 401
-    
+    def expired_token(jwt_header, jwt_payload):
+        return {"msg": "token_expired", "error": "Token expirado"}, 401
     @jwt.invalid_token_loader
-    def invalid_token_callback(error):
-        # 👀 Esto mostrará en consola la causa real del "token inválido"
-        # print(">>> Token inválido recibido:", error)
-        return {'message': 'Token inválido', 'error': 'invalid_token'}, 401
-    
+    def invalid_token(reason):
+        return {"msg": "invalid_token", "error": reason}, 401
     @jwt.unauthorized_loader
-    def missing_token_callback(error):
-        return {'message': 'Token de autorización requerido', 'error': 'authorization_required'}, 401
-
-    # Configurar logging
+    def missing_token(reason):
+        # Te deja ver fácilmente si el backend "no ve" el Authorization
+        return {"msg": "missing_token", "error": reason}, 401
+    @jwt.revoked_token_loader
+    def revoked_token(jwt_header, jwt_payload):
+        return {"msg": "token_revoked"}, 401
+    # ===============================
+    # 🔧 Inicialización de servicios
+    # ===============================
     setup_logger(app)
-    
-    # Inicializar base de datos
     init_db(app)
-    
-    # Registrar blueprints
     register_blueprints(app)
-    
+
     # Crear directorio de uploads si no existe
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-    
-    # Ruta raíz básica
+
+    # ===============================
+    # 📡 Rutas básicas
+    # ===============================
     @app.route('/')
     def home():
         return jsonify({
@@ -94,14 +98,13 @@ def create_app(config_name=None):
             }
         })
 
-    # Ruta de salud básica
     @app.route('/health')
     def health():
         return jsonify({
             'status': 'healthy',
             'message': 'Servidor funcionando correctamente'
         })
-    
+
     return app
 
 
@@ -109,7 +112,6 @@ def create_app(config_name=None):
 app = create_app()
 
 if __name__ == '__main__':
-    # Ejecutar aplicación en modo desarrollo
     app.run(
         host='0.0.0.0',
         port=int(os.environ.get('PORT', 5000)),

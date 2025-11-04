@@ -13,6 +13,8 @@ from .usuarios import usuarios_bp
 from .tareas import tareas_bp
 from .cursos import cursos_bp
 from .grupofamiliar import grupofamiliar_bp
+from .padres import padres_bp
+from .citas import citas_bp
 
 def register_blueprints(app):
     """
@@ -50,3 +52,9 @@ def register_blueprints(app):
 
     # Grupos Familiares
     app.register_blueprint(grupofamiliar_bp, url_prefix='/api/grupofamiliar')   
+
+    # Padres
+    app.register_blueprint(padres_bp, url_prefix='/api/padres')
+
+    # Citas
+    app.register_blueprint(citas_bp, url_prefix='/api/citas')
