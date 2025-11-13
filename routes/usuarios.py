@@ -41,7 +41,7 @@ def listar_usuarios():
         return jsonify({"success": False, "message": str(e)}), 500
 
 # ---------- 2. OBTENER USUARIO POR ID ----------
-@usuarios_bp.route('/<int:id>', methods=['GET'])
+@usuarios_bp.route('/<int:id>/', methods=['GET'])
 @jwt_required()
 def obtener_usuario(id):
     try:
@@ -84,10 +84,12 @@ def verificar_habitante():
 
         if not tipo_documento or not numero_documento:
             return jsonify({
-                "success": False, 
+                "success": False,
                 "message": "Se requieren tipo_documento y numero_documento"
             }), 400
 
+        # 🔁 Buscar por NÚMERO DE DOCUMENTO (que es único).
+        # El tipo_documento solamente se usa para mostrar en el mensaje.
         query = """
             SELECT 
                 h.IdHabitante,
@@ -100,11 +102,11 @@ def verificar_habitante():
             FROM habitantes h
             INNER JOIN tipodocumento td ON h.IdTipoDocumento = td.IdTipoDocumento
             LEFT JOIN usuario u ON h.IdHabitante = u.IdHabitante AND u.Activo = 1
-            WHERE td.Descripcion = %s AND h.NumeroDocumento = %s
+            WHERE h.NumeroDocumento = %s
         """
-        
-        resultado = execute_query(query, (tipo_documento, numero_documento), fetch_one=True)
-        
+
+        resultado = execute_query(query, (numero_documento,), fetch_one=True)
+
         if not resultado:
             return jsonify({
                 "success": False,
@@ -112,14 +114,13 @@ def verificar_habitante():
                 "existe": False
             }), 404
 
-        # Analizar situación del habitante
         if not resultado['Activo']:
             return jsonify({
                 "success": False,
-                "message": "El habitante está inactivo",
+                "message": "El habitante existe pero está inactivo",
                 "existe": True,
                 "activo": False,
-                "tiene_usuario": resultado['TieneUsuario'] is not None,
+                "tiene_usuario": bool(resultado['TieneUsuario']),
                 "habitante": {
                     "id": resultado['IdHabitante'],
                     "nombre": resultado['Nombre'],
@@ -184,15 +185,19 @@ def crear_usuario():
                 "message": "Faltan campos requeridos: tipo_documento, numero_documento, id_tipo_usuario, password"
             }), 400
 
-        # PRIMERO: Buscar el habitante por tipo y número de documento
+                # PRIMERO: Buscar el habitante por número de documento (el tipo se usa solo para mostrar)
+                # PRIMERO: Buscar el habitante por NÚMERO de documento
         habitante = execute_query(
             """SELECT h.IdHabitante, h.Activo 
                FROM habitantes h 
                INNER JOIN tipodocumento td ON h.IdTipoDocumento = td.IdTipoDocumento
-               WHERE td.Descripcion = %s AND h.NumeroDocumento = %s""",
-            (tipo_documento, numero_documento), 
+               WHERE h.NumeroDocumento = %s""",
+            (numero_documento,),
             fetch_one=True
         )
+
+
+        
         
         if not habitante:
             return jsonify({

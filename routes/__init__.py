@@ -58,3 +58,5 @@ def register_blueprints(app):
 
     # Citas
     app.register_blueprint(citas_bp, url_prefix='/api/citas')
+
+    

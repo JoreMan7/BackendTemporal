@@ -37,12 +37,13 @@ def create_app(config_name=None):
     # ===============================
     CORS(
     app,
-    resources={r"/api/*": {"origins": "*"}},  # limita a /api/*
+    resources={r"/api/*": {"origins": "*"}}, 
     methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization"],  # permitir Authorization
-    expose_headers=[],  # no hace falta exponer Authorization para requests
-    supports_credentials=False  # NO usamos cookies → debe ser False
+    allow_headers=["Content-Type", "Authorization"],  
+    expose_headers=[], 
+    supports_credentials=False 
 )
+
     # ===============================
     # 🔐 Configuración de JWT
     # ===============================

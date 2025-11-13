@@ -182,7 +182,7 @@ def obtener_grupo(id):
 # CREAR GRUPO (Solo Administrador)
 @grupos_bp.route('/', methods=['POST'])
 @jwt_required()
-@require_rol('Administrador')
+
 def crear_grupo():
     try:
         data = request.get_json()
