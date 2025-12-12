@@ -112,6 +112,7 @@ def eliminar_sacramento_habitante(id_habitante, id_sacramento):
     except Exception as e:
         return jsonify({'success': False, 'message': f"Error al eliminar sacramento: {str(e)}"}), 500
 
+
 # OBTENER CATÁLOGO DE SACRAMENTOS DISPONIBLES
 @sacramentos_bp.route('/catalogo', methods=['GET'])
 @jwt_required()
